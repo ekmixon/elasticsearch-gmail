@@ -36,10 +36,10 @@ def strip_html_css_js(msg):
 
 def delete_index():
     try:
-        url = "%s/%s" % (tornado.options.options.es_url, tornado.options.options.index_name)
+        url = f"{tornado.options.options.es_url}/{tornado.options.options.index_name}"
         request = HTTPRequest(url, method="DELETE", request_timeout=240, headers={"Content-Type": "application/json"})
         response = http_client.fetch(request)
-        logging.info('Delete index done   %s' % response.body)
+        logging.info(f'Delete index done   {response.body}')
     except:
         pass
 
@@ -68,11 +68,11 @@ def create_index():
     }
 
     body = json.dumps(schema)
-    url = "%s/%s" % (tornado.options.options.es_url, tornado.options.options.index_name)
+    url = f"{tornado.options.options.es_url}/{tornado.options.options.index_name}"
     try:
         request = HTTPRequest(url, method="PUT", body=body, request_timeout=240, headers={"Content-Type": "application/json"})
         response = http_client.fetch(request)
-        logging.info('Create index done   %s' % response.body)
+        logging.info(f'Create index done   {response.body}')
     except:
         pass
 
@@ -91,18 +91,28 @@ def upload_batch(upload_data):
             json_cmd = json.dumps(cmd) + "\n"
             json_item = json.dumps(item) + "\n"
         except:
-            logging.warn('Skipping mail with message id %s because of exception converting to JSON (invalid characters?).' % item['message-id'])
+            logging.warn(
+                f"Skipping mail with message id {item['message-id']} because of exception converting to JSON (invalid characters?)."
+            )
+
             continue
         upload_data_txt += json_cmd
         upload_data_txt += json_item
 
-    request = HTTPRequest(tornado.options.options.es_url + "/_bulk", method="POST", body=upload_data_txt, request_timeout=240, headers={"Content-Type": "application/json"})
+    request = HTTPRequest(
+        f"{tornado.options.options.es_url}/_bulk",
+        method="POST",
+        body=upload_data_txt,
+        request_timeout=240,
+        headers={"Content-Type": "application/json"},
+    )
+
     response = http_client.fetch(request)
     result = json.loads(response.body)
 
     global total_uploaded
     total_uploaded += len(upload_data)
-    res_txt = "OK" if not result['errors'] else "FAILED"
+    res_txt = "FAILED" if result['errors'] else "OK"
     logging.info("Upload: %s - upload took: %4dms, total messages uploaded: %6d" % (res_txt, result['took'], total_uploaded))
 
 
@@ -179,13 +189,19 @@ def load_from_file():
     if tornado.options.options.skip:
         logging.info("Skipping first %d messages" % tornado.options.options.skip)
 
-    upload_data = list()
+    upload_data = []
 
     if tornado.options.options.infile:
-        logging.info("Starting import from mbox file %s" % tornado.options.options.infile)
+        logging.info(
+            f"Starting import from mbox file {tornado.options.options.infile}"
+        )
+
         mbox = mailbox.mbox(tornado.options.options.infile)
     else:
-        logging.info("Starting import from MH directory %s" % tornado.options.options.indir)
+        logging.info(
+            f"Starting import from MH directory {tornado.options.options.indir}"
+        )
+
         mbox = mailbox.MH(tornado.options.options.indir, factory=None, create=False)
 
     #Skipping on keys to avoid expensive read operations on skipped messages
@@ -193,13 +209,11 @@ def load_from_file():
 
     for msgkey in msgkeys:
         msg = mbox[msgkey]
-        item = convert_msg_to_json(msg)
-
-        if item:
+        if item := convert_msg_to_json(msg):
             upload_data.append(item)
             if len(upload_data) == tornado.options.options.batch_size:
                 upload_batch(upload_data)
-                upload_data = list()
+                upload_data = []
 
     # upload remaining items in `upload_batch`
     if upload_data:
